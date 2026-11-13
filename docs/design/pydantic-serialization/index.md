@@ -52,7 +52,68 @@ Messages are encoded in two layers:
    `Body`, so exchanges, the cloud backend and the `allowed_deserializers`
    gate need no changes. Adding a new strategy value is a minor protocol bump.
 
-## 3. Areas of difficulty
+## 3. Interface comparison
+
+**Agent definition.** The code is the same in both versions. Type hints that
+are ignored today become the wire schema.
+
+```python
+class Point(BaseModel):
+    x: float
+    y: float
+
+
+class Geo(Agent):
+    @action
+    async def midpoint(self, a: Point, b: Point) -> Point:
+        return Point(x=(a.x + b.x) / 2, y=(a.y + b.y) / 2)
+```
+
+**Current**
+
+```python
+# pickle (default): works, but the agent must trust the sender.
+handle = await manager.launch(Geo)
+await handle.midpoint(Point(x=0, y=0), Point(x=2, y=2))  # -> Point
+
+# json: safe, but untyped. Callers hand-convert, and nothing is validated.
+handle = Handle(agent_id, request_serializer=SerializationStrategy.JSON)
+await handle.midpoint({'x': 0, 'y': 0}, {'x': 2, 'y': 2})  # -> dict
+await handle.midpoint('oops', None)  # runs; fails somewhere inside the action
+```
+
+**Proposed**
+
+```python
+# Opt in per agent, the same way JSON is opted into today.
+config = RuntimeConfig(
+    default_serializer=SerializationStrategy.PYDANTIC,
+    allowed_deserializers={SerializationStrategy.PYDANTIC},
+)
+handle = await manager.launch(
+    Geo, config=config
+)  # launch() knows Geo, so it binds the schema
+
+await handle.midpoint(Point(x=0, y=0), Point(x=2, y=2))  # -> Point (validated)
+await handle.midpoint(
+    {'x': 0, 'y': 0}, {'x': 2, 'y': 2}
+)  # -> Point (coerced on the agent side)
+await handle.midpoint(
+    'oops', None
+)  # raises a validation error; the action never runs
+
+# A handle created from an ID alone binds the agent type explicitly.
+handle = Handle(
+    agent_id, agent_type=Geo, request_serializer=SerializationStrategy.PYDANTIC
+)
+# Without agent_type: args are still validated by the agent, but the result
+# comes back as plain JSON (a dict).
+```
+
+The new public surface is small: one enum value (`PYDANTIC`), one optional
+`Handle` argument (`agent_type`), and the internal `ActionSchema`.
+
+## 4. Areas of difficulty
 
 | Area | Why it is hard |
 |---|---|
