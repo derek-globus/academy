@@ -1,0 +1,40 @@
+digraph proposed {
+  rankdir=TB; newrank=true;
+  graph [fontname="Helvetica", nodesep=0.45, ranksep=0.4, label="Proposed: schema derived from @action signatures, applied at the payload codec", labelloc=t, fontsize=14];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#ffffff"];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  sig [label="@action\nasync def foo(self, x: Model, n: int = 1) -> Result", fillcolor="#ede7f6"];
+  schema [label="{ActionSchema | params: TypeAdapter (signature model, minus context) | returns: TypeAdapter}", shape=record, style=filled, fillcolor="#ede7f6"];
+  sig -> schema [label=" derived once, cached\n on the Agent class"];
+
+  subgraph cluster_client {
+    label="Client (Handle)"; style="rounded,filled"; fillcolor="#eef4fb"; color="#9bb7d4";
+    disc [label="Schema discovery\nA: Handle bound to agent type (local import)\nB: schema advertised via exchange (later)", fillcolor="#fff8e1"];
+    enc_req [label="dump args\n(schema-aware, or by runtime type)"];
+    dec_res [label="validate result → Result"];
+  }
+
+  codec [label="PydanticSerializer\nstrategy = 'pydantic'\nserialize(obj, adapter) / deserialize(data, adapter)\nused by every dump / validate step below", fillcolor="#fdf0ef"];
+
+  subgraph cluster_agent {
+    label="Agent (Runtime)"; style="rounded,filled"; fillcolor="#eef4fb"; color="#9bb7d4";
+    dec_req [label="validate args → (Model, int)\nfailure → error response"];
+    enc_res [label="dump result"];
+  }
+
+  ex [label="Exchange\n(envelope unchanged)", shape=cylinder, fillcolor="#e8f5e9"];
+
+  schema -> disc  [style=dashed];
+  schema -> dec_req [style=dashed, label=" params"];
+  schema -> enc_res [style=dashed, label=" returns"];
+  disc -> enc_req [style=dashed]; disc -> dec_res [style=dashed];
+
+  enc_req -> ex [label=" ActionRequest"];
+  ex -> dec_req;
+  enc_res -> ex [label=" ActionResponse"];
+  ex -> dec_res;
+
+  {rank=same; schema; codec}
+  {rank=same; disc; dec_req}
+}

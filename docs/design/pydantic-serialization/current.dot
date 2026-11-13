@@ -1,0 +1,29 @@
+digraph current {
+  rankdir=TB; newrank=true;
+  graph [fontname="Helvetica", nodesep=0.5, ranksep=0.35, label="Current: payload codec nested inside a pydantic envelope", labelloc=t, fontsize=14];
+  node  [fontname="Helvetica", fontsize=10, shape=box, style="rounded,filled", fillcolor="#ffffff", width=2.6];
+  edge  [fontname="Helvetica", fontsize=9, color="#555555"];
+
+  subgraph cluster_send {
+    label="Sender (Handle → request · Runtime → response)"; style="rounded,filled"; fillcolor="#eef4fb"; color="#9bb7d4";
+    s1 [label="Python objects\n(args / kwargs / result / exception)"];
+    s2 [label="Payload codec\nstrategy ∈ {pickle, json}\nchosen per Handle or default ctxvar", fillcolor="#fdf0ef"];
+    s3 [label="opaque str  (+ strategy tag)\nin Body field", fillcolor="#f3f3f3"];
+    s4 [label="Message = Header + Body\npydantic model_dump_json()", fillcolor="#f3f3f3"];
+    s1 -> s2 -> s3 -> s4;
+  }
+
+  subgraph cluster_recv {
+    label="Receiver"; style="rounded,filled"; fillcolor="#eef4fb"; color="#9bb7d4";
+    r4 [label="Message.model_validate_json()\nBody validated lazily, payload stays str", fillcolor="#f3f3f3"];
+    r3 [label="allowed_deserializers gate\n(ctxvar)", fillcolor="#fff8e1"];
+    r2 [label="Payload codec\n(same strategy as tagged)", fillcolor="#fdf0ef"];
+    r1 [label="Python objects\nget_args() · get_result() · get_exception()\n— untyped: no schema, no validation"];
+    r4 -> r3 -> r2 -> r1;
+  }
+
+  ex [label="Exchange", shape=cylinder, fillcolor="#e8f5e9", width=1.4];
+  s4 -> ex [label=" JSON bytes"];
+  ex -> r4;
+  {rank=same; s1; r4}
+}
